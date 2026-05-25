@@ -1,0 +1,82 @@
+name: Welcome & Auto Label
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  welcome:
+    name: Welcome Message
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Greet new contributor
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueType = context.payload.issue ? 'issue' : 'pull request';
+            const body = `👋 Welcome! Thanks for opening this ${issueType}.
+
+            This repo uses **GitHub Actions** for CI/CD. Your contribution will be automatically checked!
+
+            Here's what will happen:
+            1. 🔍 **Lint** - Code style checks (Black + Flake8)
+            2. 🧪 **Test** - Unit tests across Python 3.11, 3.12, 3.13
+            3. 📦 **Build** - Package distribution
+            4. 🚀 **Deploy** - Deployment (main branch only)
+
+            Thanks for contributing! 🎉`;
+
+            if (context.payload.issue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: body
+              });
+            }
+
+  label:
+    name: Auto Label
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    if: github.event_name == 'pull_request_target'
+    steps:
+      - name: Add label to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const files = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const labels = [];
+            for (const file of files.data) {
+              if (file.filename.endsWith('.py')) labels.add('python');
+              if (file.filename.includes('requirements')) labels.add('dependencies');
+              if (file.filename.includes('.github/workflows')) labels.add('ci/cd');
+            }
+
+            if (labels.size > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                labels: [...labels]
+              });
+            }
